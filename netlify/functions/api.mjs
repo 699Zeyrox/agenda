@@ -29,6 +29,14 @@ const checkPw = (pw, stored) => {
   return crypto.timingSafeEqual(test, Buffer.from(h, "hex"));
 };
 const str = (v, n) => String(v ?? "").slice(0, n);
+// Seuls les vrais services push des navigateurs sont acceptés (évite que le serveur appelle une URL arbitraire)
+const okEndpoint = (u) => {
+  try {
+    const x = new URL(u);
+    return x.protocol === "https:" && String(u).length < 1000 &&
+      [".googleapis.com", ".push.services.mozilla.com", ".push.apple.com", ".notify.windows.com"].some((h) => x.hostname.endsWith(h));
+  } catch { return false; }
+};
 
 export default async (req) => {
   if (!process.env.JWT_SECRET) return json({ error: "JWT_SECRET n'est pas configuré sur Netlify." }, 500);
@@ -69,6 +77,34 @@ export default async (req) => {
         }));
       await store.setJSON("e:" + uid, clean);
       return json(clean);
+    }
+  }
+  if (route.startsWith("push/")) {
+    if (route === "push/key") {
+      const k = process.env.VAPID_PUBLIC_KEY;
+      return k ? json({ key: k }) : json({ error: "Les notifications push ne sont pas configurées sur le serveur." }, 501);
+    }
+    const uid = verify((req.headers.get("authorization") || "").slice(7));
+    if (!uid) return json({ error: "Session expirée, reconnecte-toi." }, 401);
+    if (req.method !== "POST") return json({ error: "Méthode non autorisée" }, 405);
+    const body = await req.json().catch(() => ({}));
+    const rec = (await store.get("s:" + uid, { type: "json" })) || { tz: "UTC", subs: [] };
+    if (route === "push/subscribe") {
+      const s = body.subscription;
+      if (!s || !okEndpoint(s.endpoint) || typeof s.keys?.p256dh !== "string" || typeof s.keys?.auth !== "string" ||
+          s.keys.p256dh.length > 200 || s.keys.auth.length > 100) return json({ error: "Abonnement invalide." }, 400);
+      let tz = "UTC";
+      try { new Intl.DateTimeFormat("fr", { timeZone: String(body.tz) }); tz = String(body.tz).slice(0, 64); } catch {}
+      rec.tz = tz;
+      rec.subs = [{ endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth }, added: Date.now() },
+                  ...rec.subs.filter((x) => x.endpoint !== s.endpoint)].slice(0, 5);
+      await store.setJSON("s:" + uid, rec);
+      return json({ ok: true });
+    }
+    if (route === "push/unsubscribe") {
+      rec.subs = rec.subs.filter((x) => x.endpoint !== body.endpoint);
+      rec.subs.length ? await store.setJSON("s:" + uid, rec) : await store.delete("s:" + uid);
+      return json({ ok: true });
     }
   }
   return json({ error: "Introuvable" }, 404);
