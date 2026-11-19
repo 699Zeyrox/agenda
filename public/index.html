@@ -57,10 +57,13 @@ header span{color:var(--mute);font-size:.9rem;overflow-wrap:anywhere}
 .ev small{color:var(--mute);display:block;white-space:pre-wrap}
 .ev button{border:0;background:none;color:var(--mute);padding:.2rem .5rem}
 .empty{color:var(--mute)}
+.tabs{display:flex;gap:.4rem;margin-bottom:.9rem}
+.tabs button{flex:1}
 .up-day{margin:1rem 0 .4rem;font-size:.85rem;font-weight:600;color:var(--mute);text-transform:capitalize}
 .up-day:first-child{margin-top:0}
 .up-day.today{color:var(--today)}
 .up-ev{display:block;width:100%;text-align:left;border:0;border-left:4px solid var(--acc);border-radius:0 8px 8px 0;background:var(--bg);padding:.4rem .7rem;margin-bottom:.4rem}
+.up-ev.past{border-left-color:var(--mute);opacity:.8}
 .up-ev:hover{background:var(--line)}
 .up-ev small{display:block;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
@@ -103,9 +106,12 @@ form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
     </form>
     <div class="err" id="appErr" role="alert"></div>
   </section>
-  <aside class="panel" id="upcoming" aria-labelledby="upTitle">
-    <h2 id="upTitle">À venir</h2>
-    <div id="upList"></div>
+  <aside class="panel" id="upcoming" aria-label="Événements à venir et passés">
+    <div class="tabs" role="tablist">
+      <button id="tabUp" class="p" role="tab" aria-selected="true" aria-controls="upList">À venir</button>
+      <button id="tabPast" role="tab" aria-selected="false" aria-controls="upList">Passés</button>
+    </div>
+    <div id="upList" role="tabpanel"></div>
   </aside>
 </div>
 
@@ -115,7 +121,7 @@ const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, 
 const mk = (n) => ({ get: (k) => { try { return window[n].getItem(k); } catch { return null; } },
                     set: (k, v) => { try { v == null ? window[n].removeItem(k) : window[n].setItem(k, v); } catch {} } });
 const local = mk("localStorage"), session = mk("sessionStorage");
-let token = local.get("token") || session.get("token"), mail = local.get("mail") || session.get("mail"), events = [], view = new Date(), sel = iso(new Date()), registering = false;
+let token = local.get("token") || session.get("token"), mail = local.get("mail") || session.get("mail"), events = [], view = new Date(), sel = iso(new Date()), registering = false, upTab = "up";
 view.setDate(1);
 // Menus d'heure : "--" = sans heure ; minutes par pas de 5
 $("#hh").innerHTML = '<option value="">--</option>' + Array.from({ length: 24 }, (_, h) => { const v = String(h).padStart(2, "0"); return `<option value="${v}">${v}</option>`; }).join("");
@@ -194,15 +200,19 @@ function render() {
   checkNotifs();
 }
 
+// Panneau de droite : onglets « À venir » / « Passés »
 function renderUpcoming() {
   const box = $("#upList"); box.innerHTML = "";
-  const now = new Date(), today = iso(now), tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  const isUp = upTab === "up";
+  $("#tabUp").classList.toggle("p", isUp); $("#tabUp").setAttribute("aria-selected", String(isUp));
+  $("#tabPast").classList.toggle("p", !isUp); $("#tabPast").setAttribute("aria-selected", String(!isUp));
+  const now = new Date(), today = iso(now), tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)), yesterday = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
   const hm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
-  const next = events
-    .filter((e) => e.date > today || (e.date === today && (!e.time || e.time >= hm)))
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || "99").localeCompare(b.time || "99"));
-  if (!next.length) { box.innerHTML = '<p class="empty">Aucun événement à venir.</p>'; return; }
-  const label = (d) => d === today ? "Aujourd'hui" : d === tomorrow ? "Demain"
+  const isNext = (e) => e.date > today || (e.date === today && (!e.time || e.time >= hm));
+  const cmp = (a, b) => a.date.localeCompare(b.date) || (a.time || "99").localeCompare(b.time || "99");
+  const next = events.filter((e) => isUp ? isNext(e) : !isNext(e)).sort((a, b) => isUp ? cmp(a, b) : cmp(b, a));
+  if (!next.length) { box.innerHTML = '<p class="empty">' + (isUp ? "Aucun événement à venir." : "Aucun événement passé.") + "</p>"; return; }
+  const label = (d) => d === today ? "Aujourd'hui" : d === tomorrow ? "Demain" : d === yesterday ? "Hier"
     : new Date(d + "T12:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: d.slice(0, 4) !== String(now.getFullYear()) ? "numeric" : undefined });
   let last = "";
   next.forEach((e) => {
@@ -211,12 +221,14 @@ function renderUpcoming() {
       const h = document.createElement("div"); h.className = "up-day" + (e.date === today ? " today" : ""); h.textContent = label(e.date); box.appendChild(h);
     }
     const b = document.createElement("button"), s = document.createElement("strong");
-    b.className = "up-ev"; s.textContent = (e.time ? e.time + " · " : "") + e.title; b.appendChild(s);
+    b.className = "up-ev" + (isUp ? "" : " past"); s.textContent = (e.time ? e.time + " · " : "") + e.title; b.appendChild(s);
     if (e.note) { const m = document.createElement("small"); m.textContent = e.note; b.appendChild(m); }
     b.onclick = () => { sel = e.date; view = new Date(+e.date.slice(0, 4), +e.date.slice(5, 7) - 1, 1); render(); $("#selTitle").scrollIntoView({ behavior: "smooth", block: "nearest" }); };
     box.appendChild(b);
   });
 }
+$("#tabUp").onclick = () => { upTab = "up"; renderUpcoming(); };
+$("#tabPast").onclick = () => { upTab = "past"; renderUpcoming(); };
 setInterval(() => { if (token) renderUpcoming(); }, 60000);
 
 // --- Notifications (fonctionnent tant que l'agenda est ouvert dans un onglet / l'appli) ---
