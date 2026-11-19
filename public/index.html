@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mon agenda</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="theme-color" content="#2f5bea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Agenda">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗓️</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap">
 <style>
@@ -13,6 +18,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Bricolage Grotesque",system-ui,sans-serif}
 .hidden{display:none!important}
 button,input,textarea{font:inherit;color:inherit}
+select{font:inherit;color:inherit;color-scheme:light dark;padding:.65rem .5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);cursor:pointer}
 input,textarea{width:100%;padding:.65rem .8rem;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 :focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:.55rem .9rem}
@@ -32,7 +38,8 @@ label{display:block;margin:.8rem 0 .25rem;font-size:.9rem;color:var(--mute)}
 @media(min-width:1180px){#app{max-width:1500px;grid-template-columns:1.4fr 1fr 1fr}#upcoming{grid-column:auto;position:sticky;top:1rem;align-self:start;max-height:calc(100vh - 2rem);overflow-y:auto}}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
 header h1{font-size:1.6rem;margin:0}
-header span{color:var(--mute);font-size:.9rem;margin-right:.7rem}
+header>div{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.5rem}
+header span{color:var(--mute);font-size:.9rem;overflow-wrap:anywhere}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.2rem}
 .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
 .nav strong{text-transform:capitalize;font-size:1.2rem}
@@ -57,7 +64,10 @@ header span{color:var(--mute);font-size:.9rem;margin-right:.7rem}
 .up-ev:hover{background:var(--line)}
 .up-ev small{display:block;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
-.row{display:grid;grid-template-columns:110px 1fr;gap:.6rem}
+.row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:.6rem}
+@media(max-width:520px){.row{grid-template-columns:minmax(0,1fr)}}
+.hm{display:flex;align-items:center;gap:.3rem}
+.hm select{flex:1;min-width:0}
 </style>
 </head>
 <body>
@@ -77,7 +87,7 @@ form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
 </main>
 
 <div id="app" class="hidden">
-  <header><h1>Mon agenda</h1><div><span id="who"></span><button id="logout">Se déconnecter</button></div></header>
+  <header><h1>Mon agenda</h1><div><span id="who"></span><button id="notif" aria-pressed="false">🔕 Notifications désactivées</button><button id="logout">Se déconnecter</button></div></header>
   <section class="panel">
     <div class="nav"><button id="prev" aria-label="Mois précédent">‹</button><strong id="month"></strong><button id="next" aria-label="Mois suivant">›</button></div>
     <div class="grid" id="grid"></div>
@@ -88,7 +98,7 @@ form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
     <form class="add" id="addForm">
       <label for="title">Nouvel événement</label>
       <input id="title" placeholder="Ex. Rendez-vous dentiste" required maxlength="200">
-      <div class="row"><div><label for="time">Heure</label><input id="time" type="time"></div><div><label for="note">Note</label><input id="note" maxlength="1000"></div></div>
+      <div class="row"><div><label for="hh">Heure</label><div class="hm"><select id="hh" aria-label="Heures"></select><span aria-hidden="true">:</span><select id="mm" aria-label="Minutes"></select></div></div><div><label for="note">Note</label><input id="note" maxlength="1000"></div></div>
       <button class="p" style="width:100%;margin-top:1rem">Ajouter l'événement</button>
     </form>
     <div class="err" id="appErr" role="alert"></div>
@@ -107,6 +117,9 @@ const mk = (n) => ({ get: (k) => { try { return window[n].getItem(k); } catch { 
 const local = mk("localStorage"), session = mk("sessionStorage");
 let token = local.get("token") || session.get("token"), mail = local.get("mail") || session.get("mail"), events = [], view = new Date(), sel = iso(new Date()), registering = false;
 view.setDate(1);
+// Menus d'heure : "--" = sans heure ; minutes par pas de 5
+$("#hh").innerHTML = '<option value="">--</option>' + Array.from({ length: 24 }, (_, h) => { const v = String(h).padStart(2, "0"); return `<option value="${v}">${v}</option>`; }).join("");
+$("#mm").innerHTML = Array.from({ length: 12 }, (_, i) => { const v = String(i * 5).padStart(2, "0"); return `<option value="${v}">${v}</option>`; }).join("");
 
 async function api(path, method = "GET", body) {
   const r = await fetch("/api/" + path, { method, headers: { "content-type": "application/json", ...(token && { authorization: "Bearer " + token }) }, body: body && JSON.stringify(body) });
@@ -115,8 +128,8 @@ async function api(path, method = "GET", body) {
   if (!r.ok) throw new Error(d.error || "Erreur réseau, réessaie.");
   return d;
 }
-function logout() { token = mail = null; for (const st of [local, session]) { st.set("token", null); st.set("mail", null); } events = []; show(); }
-function show() { $("#auth").classList.toggle("hidden", !!token); $("#app").classList.toggle("hidden", !token); if (token) { $("#who").textContent = mail; render(); } }
+function logout() { token = mail = null; for (const st of [local, session]) { st.set("token", null); st.set("mail", null); } local.set("notif", null); local.set("pushmode", null); events = []; show(); }
+function show() { $("#auth").classList.toggle("hidden", !!token); $("#app").classList.toggle("hidden", !token); if (token) { $("#who").textContent = mail; updateNotifBtn(); render(); } }
 
 $("#toggle").onclick = () => {
   registering = !registering;
@@ -136,7 +149,7 @@ $("#authForm").onsubmit = async (e) => {
     events = await api("events"); show();
   } catch (err) { $("#authErr").textContent = err.message; }
 };
-$("#logout").onclick = logout;
+$("#logout").onclick = async () => { await pushOff(); logout(); };
 $("#prev").onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
 $("#next").onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
 
@@ -147,7 +160,7 @@ async function save(next) {
 }
 $("#addForm").onsubmit = (e) => {
   e.preventDefault();
-  const ev = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), date: sel, time: $("#time").value, title: $("#title").value.trim(), note: $("#note").value.trim() };
+  const ev = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), date: sel, time: $("#hh").value ? $("#hh").value + ":" + $("#mm").value : "", title: $("#title").value.trim(), note: $("#note").value.trim() };
   e.target.reset(); save([...events, ev]);
 };
 
@@ -178,6 +191,7 @@ function render() {
     el.append(t, x); list.appendChild(el);
   });
   renderUpcoming();
+  checkNotifs();
 }
 
 function renderUpcoming() {
@@ -205,7 +219,81 @@ function renderUpcoming() {
 }
 setInterval(() => { if (token) renderUpcoming(); }, 60000);
 
+// --- Notifications (fonctionnent tant que l'agenda est ouvert dans un onglet / l'appli) ---
+const LEAD_MIN = 10, ALL_DAY_HOUR = 8; // rappel 10 min avant ; événements sans heure : 8h le jour même
+const canNotif = () => "Notification" in window;
+const notifOn = () => canNotif() && Notification.permission === "granted" && local.get("notif") === "1";
+function updateNotifBtn() {
+  const b = $("#notif"), on = notifOn();
+  b.textContent = on ? "🔔 Notifications activées" : "🔕 Notifications désactivées";
+  b.classList.toggle("p", on); b.setAttribute("aria-pressed", String(on));
+}
+async function notify(title, body, tag) {
+  try {
+    const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg) await reg.showNotification(title, { body, tag }); else new Notification(title, { body, tag });
+  } catch {}
+}
+const b64ToBytes = (b) => Uint8Array.from(atob((b + "=".repeat((4 - b.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+async function pushSubscribe() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("non supporté sur cet appareil");
+  const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error("service worker indisponible")), 5000))]);
+  const { key } = await api("push/key");
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) }));
+  await api("push/subscribe", "POST", { subscription: sub.toJSON(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+}
+async function pushOff() {
+  try {
+    if (local.get("pushmode") === "1" && "serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration(), sub = reg && await reg.pushManager.getSubscription();
+      if (sub) { if (token) await api("push/unsubscribe", "POST", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+    }
+  } catch {}
+  local.set("pushmode", null);
+}
+$("#notif").onclick = async () => {
+  const err = $("#appErr"); err.textContent = "";
+  if (notifOn()) { await pushOff(); local.set("notif", null); updateNotifBtn(); return; }
+  if (!canNotif()) { err.textContent = "Ce navigateur ne gère pas les notifications. Sur iPhone, ajoute d'abord le site à l'écran d'accueil (Partager > Sur l'écran d'accueil) et ouvre-le depuis l'icône."; return; }
+  let perm = Notification.permission;
+  if (perm === "default") perm = await Notification.requestPermission();
+  if (perm !== "granted") { err.textContent = "Notifications bloquées : autorise-les dans les réglages du site de ton navigateur, puis réessaie."; updateNotifBtn(); return; }
+  local.set("notif", "1");
+  try {
+    await pushSubscribe(); local.set("pushmode", "1");
+    notify("Notifications activées", "Tu seras prévenu " + LEAD_MIN + " min avant tes événements, même appli fermée.", "welcome");
+  } catch (e) {
+    local.set("pushmode", null);
+    err.textContent = "Rappels appli fermée indisponibles (" + e.message + "). Les notifications ne marcheront que si l'agenda est ouvert.";
+    notify("Notifications activées", "Seulement tant que l'agenda est ouvert.", "welcome");
+  }
+  updateNotifBtn(); checkNotifs();
+};
+function checkNotifs() {
+  if (!token || !notifOn() || local.get("pushmode") === "1") return; // en mode push, c'est le serveur qui envoie
+  const now = Date.now();
+  let done; try { done = new Set(JSON.parse(local.get("notified") || "[]")); } catch { done = new Set(); }
+  const keys = new Set(); let changed = false;
+  events.forEach((e) => {
+    const [y, m, d] = e.date.split("-").map(Number), key = e.id + "|" + e.date + "|" + e.time;
+    keys.add(key);
+    let start, due;
+    if (e.time) { const [h, mi] = e.time.split(":").map(Number); start = new Date(y, m - 1, d, h, mi).getTime(); due = start - LEAD_MIN * 60000; }
+    else { due = new Date(y, m - 1, d, ALL_DAY_HOUR).getTime(); start = new Date(y, m - 1, d + 1).getTime(); }
+    if (now >= due && now < start && !done.has(key)) {
+      done.add(key); changed = true;
+      notify(e.title, (e.time ? "À " + e.time : "Aujourd'hui") + (e.note ? " · " + e.note : ""), key);
+    }
+  });
+  const kept = events.length ? [...done].filter((k) => keys.has(k)) : [...done];
+  if (changed || kept.length !== done.size) local.set("notified", JSON.stringify(kept));
+}
+setInterval(checkNotifs, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkNotifs(); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
 (async () => { show(); if (token) { try { events = await api("events"); render(); } catch {} } })();
 </script>
 </body>
 </html>
+
