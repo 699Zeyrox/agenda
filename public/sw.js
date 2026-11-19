@@ -1,17 +1,27 @@
-// Service worker : reçoit les notifications push (même appli fermée) et rouvre l'agenda au clic.
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
-self.addEventListener("push", (e) => {
-  let d = {};
-  try { d = e.data ? e.data.json() : {}; } catch {}
-  e.waitUntil(self.registration.showNotification(d.title || "Mon agenda", {
-    body: d.body || "", tag: d.tag, icon: "/icon-192.png"
-  }));
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data.text() }; }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Agenda', {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: data.tag,
+      data: { url: data.url || '/' },
+    })
+  );
 });
-self.addEventListener("notificationclick", (e) => {
-  e.notification.close();
-  e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) =>
-      list.length ? list[0].focus() : self.clients.openWindow("/"))
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ('focus' in c) return c.focus();
+      return self.clients.openWindow(url);
+    })
   );
 });
