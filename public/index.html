@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mon agenda</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗓️</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#16212f;--mute:#667587;--line:#d9e1ea;--acc:#2f5bea;--accink:#fff;--today:#f2a900;--err:#c62828}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1620;--card:#18222f;--ink:#e8eef6;--mute:#93a3b5;--line:#2a3849;--acc:#6f93ff;--accink:#0f1620;--today:#f2b83a;--err:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Bricolage Grotesque",system-ui,sans-serif}
+.hidden{display:none!important}
+button,input,textarea{font:inherit;color:inherit}
+input,textarea{width:100%;padding:.65rem .8rem;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:.55rem .9rem}
+button.p{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:600}
+#auth{min-height:100vh;display:grid;place-items:center;padding:1rem}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2rem;width:100%;max-width:380px}
+h1{font-size:2.4rem;line-height:1;margin:0 0 .3rem;font-weight:800;letter-spacing:-.03em}
+.box p{color:var(--mute);margin:0 0 1.2rem}
+label{display:block;margin:.8rem 0 .25rem;font-size:.9rem;color:var(--mute)}
+.box .p{width:100%;margin-top:1.2rem}
+.link{background:none;border:0;color:var(--acc);padding:.5rem 0;margin-top:.5rem;width:100%}
+.err{color:var(--err);min-height:1.4em;margin:.6rem 0 0;font-size:.9rem}
+#app{max-width:1000px;margin:0 auto;padding:1rem;display:grid;gap:1rem;grid-template-columns:1fr}
+@media(min-width:800px){#app{grid-template-columns:1.5fr 1fr;padding:2rem 1rem}header{grid-column:1/-1}}
+header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+header h1{font-size:1.6rem;margin:0}
+header span{color:var(--mute);font-size:.9rem;margin-right:.7rem}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.2rem}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
+.nav strong{text-transform:capitalize;font-size:1.2rem}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.dow{color:var(--mute);font-size:.8rem}
+.day{aspect-ratio:1;border:1px solid transparent;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;padding:0}
+.day:hover{border-color:var(--line)}
+.day.today{box-shadow:inset 0 0 0 2px var(--today)}
+.day.sel{background:var(--acc);color:var(--accink)}
+.day i{width:5px;height:5px;border-radius:50%;background:var(--acc)}
+.day.sel i{background:var(--accink)}
+.day i.none{visibility:hidden}
+.panel h2{margin:0 0 .8rem;font-size:1.2rem;text-transform:capitalize}
+.ev{border-left:4px solid var(--acc);padding:.3rem .7rem;margin-bottom:.6rem;display:flex;justify-content:space-between;gap:.5rem}
+.ev small{color:var(--mute);display:block;white-space:pre-wrap}
+.ev button{border:0;background:none;color:var(--mute);padding:.2rem .5rem}
+.empty{color:var(--mute)}
+form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
+.row{display:grid;grid-template-columns:110px 1fr;gap:.6rem}
+</style>
+</head>
+<body>
+<main id="auth">
+  <form class="box" id="authForm">
+    <h1>Mon agenda</h1>
+    <p id="authSub">Connecte-toi pour retrouver tes événements.</p>
+    <label for="email">E-mail</label>
+    <input id="email" type="email" autocomplete="email" required>
+    <label for="pw">Mot de passe</label>
+    <input id="pw" type="password" autocomplete="current-password" minlength="8" required>
+    <div class="err" id="authErr" role="alert"></div>
+    <button class="p" id="authBtn">Se connecter</button>
+    <button type="button" class="link" id="toggle">Pas de compte ? Créer un compte</button>
+  </form>
+</main>
+
+<div id="app" class="hidden">
+  <header><h1>Mon agenda</h1><div><span id="who"></span><button id="logout">Se déconnecter</button></div></header>
+  <section class="panel">
+    <div class="nav"><button id="prev" aria-label="Mois précédent">‹</button><strong id="month"></strong><button id="next" aria-label="Mois suivant">›</button></div>
+    <div class="grid" id="grid"></div>
+  </section>
+  <section class="panel">
+    <h2 id="selTitle"></h2>
+    <div id="list"></div>
+    <form class="add" id="addForm">
+      <label for="title">Nouvel événement</label>
+      <input id="title" placeholder="Ex. Rendez-vous dentiste" required maxlength="200">
+      <div class="row"><div><label for="time">Heure</label><input id="time" type="time"></div><div><label for="note">Note</label><input id="note" maxlength="1000"></div></div>
+      <button class="p" style="width:100%;margin-top:1rem">Ajouter l'événement</button>
+    </form>
+    <div class="err" id="appErr" role="alert"></div>
+  </section>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
+let token = store.get("token"), mail = store.get("mail"), events = [], view = new Date(), sel = iso(new Date()), registering = false;
+view.setDate(1);
+
+async function api(path, method = "GET", body) {
+  const r = await fetch("/api/" + path, { method, headers: { "content-type": "application/json", ...(token && { authorization: "Bearer " + token }) }, body: body && JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401 && token) logout();
+  if (!r.ok) throw new Error(d.error || "Erreur réseau, réessaie.");
+  return d;
+}
+function logout() { token = mail = null; store.set("token", null); store.set("mail", null); events = []; show(); }
+function show() { $("#auth").classList.toggle("hidden", !!token); $("#app").classList.toggle("hidden", !token); if (token) { $("#who").textContent = mail; render(); } }
+
+$("#toggle").onclick = () => {
+  registering = !registering;
+  $("#authBtn").textContent = registering ? "Créer mon compte" : "Se connecter";
+  $("#toggle").textContent = registering ? "Déjà un compte ? Se connecter" : "Pas de compte ? Créer un compte";
+  $("#authSub").textContent = registering ? "Choisis un mot de passe d'au moins 8 caractères." : "Connecte-toi pour retrouver tes événements.";
+  $("#pw").autocomplete = registering ? "new-password" : "current-password";
+  $("#authErr").textContent = "";
+};
+$("#authForm").onsubmit = async (e) => {
+  e.preventDefault(); $("#authErr").textContent = "";
+  try {
+    const d = await api(registering ? "register" : "login", "POST", { email: $("#email").value, password: $("#pw").value });
+    token = d.token; mail = d.email; store.set("token", token); store.set("mail", mail); $("#pw").value = "";
+    events = await api("events"); show();
+  } catch (err) { $("#authErr").textContent = err.message; }
+};
+$("#logout").onclick = logout;
+$("#prev").onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
+$("#next").onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
+
+async function save(next) {
+  const old = events; events = next; render(); $("#appErr").textContent = "";
+  try { events = await api("events", "PUT", next); } catch (err) { events = old; $("#appErr").textContent = err.message; }
+  render();
+}
+$("#addForm").onsubmit = (e) => {
+  e.preventDefault();
+  const ev = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), date: sel, time: $("#time").value, title: $("#title").value.trim(), note: $("#note").value.trim() };
+  e.target.reset(); save([...events, ev]);
+};
+
+function render() {
+  $("#month").textContent = view.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+  const g = $("#grid"); g.innerHTML = "";
+  ["L", "M", "M", "J", "V", "S", "D"].forEach((d) => g.insertAdjacentHTML("beforeend", `<div class="dow">${d}</div>`));
+  const off = (view.getDay() + 6) % 7, n = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate(), today = iso(new Date());
+  for (let i = 0; i < off; i++) g.appendChild(document.createElement("div"));
+  for (let d = 1; d <= n; d++) {
+    const key = iso(new Date(view.getFullYear(), view.getMonth(), d));
+    const b = document.createElement("button");
+    b.className = "day" + (key === today ? " today" : "") + (key === sel ? " sel" : "");
+    b.innerHTML = `${d}<i class="${events.some((e) => e.date === key) ? "" : "none"}"></i>`;
+    b.onclick = () => { sel = key; render(); };
+    g.appendChild(b);
+  }
+  $("#selTitle").textContent = new Date(sel + "T12:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  const list = $("#list"); list.innerHTML = "";
+  const day = events.filter((e) => e.date === sel).sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
+  if (!day.length) list.innerHTML = '<p class="empty">Rien de prévu ce jour-là.</p>';
+  day.forEach((e) => {
+    const el = document.createElement("div"); el.className = "ev";
+    const t = document.createElement("div"), s = document.createElement("strong"), m = document.createElement("small");
+    s.textContent = (e.time ? e.time + " · " : "") + e.title; m.textContent = e.note; t.append(s, m);
+    const x = document.createElement("button"); x.textContent = "Supprimer"; x.setAttribute("aria-label", "Supprimer " + e.title);
+    x.onclick = () => save(events.filter((v) => v.id !== e.id));
+    el.append(t, x); list.appendChild(el);
+  });
+}
+
+(async () => { show(); if (token) { try { events = await api("events"); render(); } catch {} } })();
+</script>
+</body>
+</html>
