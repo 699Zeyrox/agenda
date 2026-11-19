@@ -1,0 +1,5 @@
+.tabs { display: flex; gap: 8px; margin: 12px 0; }
+.tab { flex: 1; padding: 10px; border: 1px solid #ccc; background: #f6f6f6; border-radius: 8px; cursor: pointer; }
+.tab.active { background: #222; color: #fff; border-color: #222; }
+.event-item { padding: 10px 12px; border: 1px solid #e2e2e2; border-radius: 8px; margin-bottom: 8px; }
+.event-item.past { opacity: .65; }
