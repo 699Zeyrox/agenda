@@ -26,7 +26,8 @@ label{display:block;margin:.8rem 0 .25rem;font-size:.9rem;color:var(--mute)}
 .link{background:none;border:0;color:var(--acc);padding:.5rem 0;margin-top:.5rem;width:100%}
 .err{color:var(--err);min-height:1.4em;margin:.6rem 0 0;font-size:.9rem}
 #app{max-width:1000px;margin:0 auto;padding:1rem;display:grid;gap:1rem;grid-template-columns:1fr}
-@media(min-width:800px){#app{grid-template-columns:1.5fr 1fr;padding:2rem 1rem}header{grid-column:1/-1}}
+@media(min-width:800px){#app{grid-template-columns:1.5fr 1fr;padding:2rem 1rem}header,#upcoming{grid-column:1/-1}}
+@media(min-width:1180px){#app{max-width:1500px;grid-template-columns:1.4fr 1fr 1fr}#upcoming{grid-column:auto;position:sticky;top:1rem;align-self:start;max-height:calc(100vh - 2rem);overflow-y:auto}}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
 header h1{font-size:1.6rem;margin:0}
 header span{color:var(--mute);font-size:.9rem;margin-right:.7rem}
@@ -47,6 +48,12 @@ header span{color:var(--mute);font-size:.9rem;margin-right:.7rem}
 .ev small{color:var(--mute);display:block;white-space:pre-wrap}
 .ev button{border:0;background:none;color:var(--mute);padding:.2rem .5rem}
 .empty{color:var(--mute)}
+.up-day{margin:1rem 0 .4rem;font-size:.85rem;font-weight:600;color:var(--mute);text-transform:capitalize}
+.up-day:first-child{margin-top:0}
+.up-day.today{color:var(--today)}
+.up-ev{display:block;width:100%;text-align:left;border:0;border-left:4px solid var(--acc);border-radius:0 8px 8px 0;background:var(--bg);padding:.4rem .7rem;margin-bottom:.4rem}
+.up-ev:hover{background:var(--line)}
+.up-ev small{display:block;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
 .row{display:grid;grid-template-columns:110px 1fr;gap:.6rem}
 </style>
@@ -83,6 +90,10 @@ form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
     </form>
     <div class="err" id="appErr" role="alert"></div>
   </section>
+  <aside class="panel" id="upcoming" aria-labelledby="upTitle">
+    <h2 id="upTitle">À venir</h2>
+    <div id="upList"></div>
+  </aside>
 </div>
 
 <script>
@@ -160,7 +171,33 @@ function render() {
     x.onclick = () => save(events.filter((v) => v.id !== e.id));
     el.append(t, x); list.appendChild(el);
   });
+  renderUpcoming();
 }
+
+function renderUpcoming() {
+  const box = $("#upList"); box.innerHTML = "";
+  const now = new Date(), today = iso(now), tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  const hm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  const next = events
+    .filter((e) => e.date > today || (e.date === today && (!e.time || e.time >= hm)))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || "99").localeCompare(b.time || "99"));
+  if (!next.length) { box.innerHTML = '<p class="empty">Aucun événement à venir.</p>'; return; }
+  const label = (d) => d === today ? "Aujourd'hui" : d === tomorrow ? "Demain"
+    : new Date(d + "T12:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: d.slice(0, 4) !== String(now.getFullYear()) ? "numeric" : undefined });
+  let last = "";
+  next.forEach((e) => {
+    if (e.date !== last) {
+      last = e.date;
+      const h = document.createElement("div"); h.className = "up-day" + (e.date === today ? " today" : ""); h.textContent = label(e.date); box.appendChild(h);
+    }
+    const b = document.createElement("button"), s = document.createElement("strong");
+    b.className = "up-ev"; s.textContent = (e.time ? e.time + " · " : "") + e.title; b.appendChild(s);
+    if (e.note) { const m = document.createElement("small"); m.textContent = e.note; b.appendChild(m); }
+    b.onclick = () => { sel = e.date; view = new Date(+e.date.slice(0, 4), +e.date.slice(5, 7) - 1, 1); render(); $("#selTitle").scrollIntoView({ behavior: "smooth", block: "nearest" }); };
+    box.appendChild(b);
+  });
+}
+setInterval(() => { if (token) renderUpcoming(); }, 60000);
 
 (async () => { show(); if (token) { try { events = await api("events"); render(); } catch {} } })();
 </script>
