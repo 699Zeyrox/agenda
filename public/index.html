@@ -24,6 +24,8 @@ h1{font-size:2.4rem;line-height:1;margin:0 0 .3rem;font-weight:800;letter-spacin
 label{display:block;margin:.8rem 0 .25rem;font-size:.9rem;color:var(--mute)}
 .box .p{width:100%;margin-top:1.2rem}
 .link{background:none;border:0;color:var(--acc);padding:.5rem 0;margin-top:.5rem;width:100%}
+.rem{display:flex;align-items:center;gap:.5rem;margin:1rem 0 0;font-size:.95rem;color:var(--ink);cursor:pointer}
+.rem input{width:auto;margin:0}
 .err{color:var(--err);min-height:1.4em;margin:.6rem 0 0;font-size:.9rem}
 #app{max-width:1000px;margin:0 auto;padding:1rem;display:grid;gap:1rem;grid-template-columns:1fr}
 @media(min-width:800px){#app{grid-template-columns:1.5fr 1fr;padding:2rem 1rem}header,#upcoming{grid-column:1/-1}}
@@ -67,6 +69,7 @@ form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
     <input id="email" type="email" autocomplete="email" required>
     <label for="pw">Mot de passe</label>
     <input id="pw" type="password" autocomplete="current-password" minlength="8" required>
+    <label class="rem"><input type="checkbox" id="remember"> Rester connecté</label>
     <div class="err" id="authErr" role="alert"></div>
     <button class="p" id="authBtn">Se connecter</button>
     <button type="button" class="link" id="toggle">Pas de compte ? Créer un compte</button>
@@ -99,9 +102,10 @@ form.add{border-top:1px solid var(--line);margin-top:1rem;padding-top:.5rem}
 <script>
 const $ = (s) => document.querySelector(s);
 const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-                set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
-let token = store.get("token"), mail = store.get("mail"), events = [], view = new Date(), sel = iso(new Date()), registering = false;
+const mk = (n) => ({ get: (k) => { try { return window[n].getItem(k); } catch { return null; } },
+                    set: (k, v) => { try { v == null ? window[n].removeItem(k) : window[n].setItem(k, v); } catch {} } });
+const local = mk("localStorage"), session = mk("sessionStorage");
+let token = local.get("token") || session.get("token"), mail = local.get("mail") || session.get("mail"), events = [], view = new Date(), sel = iso(new Date()), registering = false;
 view.setDate(1);
 
 async function api(path, method = "GET", body) {
@@ -111,7 +115,7 @@ async function api(path, method = "GET", body) {
   if (!r.ok) throw new Error(d.error || "Erreur réseau, réessaie.");
   return d;
 }
-function logout() { token = mail = null; store.set("token", null); store.set("mail", null); events = []; show(); }
+function logout() { token = mail = null; for (const st of [local, session]) { st.set("token", null); st.set("mail", null); } events = []; show(); }
 function show() { $("#auth").classList.toggle("hidden", !!token); $("#app").classList.toggle("hidden", !token); if (token) { $("#who").textContent = mail; render(); } }
 
 $("#toggle").onclick = () => {
@@ -125,8 +129,10 @@ $("#toggle").onclick = () => {
 $("#authForm").onsubmit = async (e) => {
   e.preventDefault(); $("#authErr").textContent = "";
   try {
-    const d = await api(registering ? "register" : "login", "POST", { email: $("#email").value, password: $("#pw").value });
-    token = d.token; mail = d.email; store.set("token", token); store.set("mail", mail); $("#pw").value = "";
+    const d = await api(registering ? "register" : "login", "POST", { email: $("#email").value, password: $("#pw").value, remember: $("#remember").checked });
+    token = d.token; mail = d.email;
+    for (const st of [local, session]) { st.set("token", null); st.set("mail", null); }
+    const st = $("#remember").checked ? local : session; st.set("token", token); st.set("mail", mail); $("#pw").value = "";
     events = await api("events"); show();
   } catch (err) { $("#authErr").textContent = err.message; }
 };
