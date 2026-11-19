@@ -2,15 +2,15 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
-  let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data.text() }; }
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch { d = { body: event.data ? event.data.text() : '' }; }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Agenda', {
-      body: data.body || '',
+    self.registration.showNotification(d.title || 'Mon agenda', {
+      body: d.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: data.tag,
-      data: { url: data.url || '/' },
+      tag: d.tag,
+      data: { url: d.url || '/' },
     })
   );
 });
