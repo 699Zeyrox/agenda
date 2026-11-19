@@ -6,8 +6,9 @@ const json = (d, s = 200) =>
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const hmac = (body) => crypto.createHmac("sha256", process.env.JWT_SECRET).update(body).digest("base64url");
 
-function sign(uid) {
-  const body = Buffer.from(JSON.stringify({ uid, exp: Date.now() + 365 * 864e5 })).toString("base64url");
+function sign(uid, remember = false) {
+  const days = remember ? 30 : 1;
+  const body = Buffer.from(JSON.stringify({ uid, exp: Date.now() + days * 864e5 })).toString("base64url");
   return body + "." + hmac(body);
 }
 function verify(token) {
@@ -36,7 +37,8 @@ export default async (req) => {
 
   if (route === "register" || route === "login") {
     if (req.method !== "POST") return json({ error: "Méthode non autorisée" }, 405);
-    const { email = "", password = "" } = await req.json().catch(() => ({}));
+    const { email = "", password = "", remember = false } = await req.json().catch(() => ({}));
+    const keep = remember === true;
     const mail = String(email).trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail) || mail.length > 200) return json({ error: "Adresse e-mail invalide." }, 400);
     const uid = sha(mail);
@@ -45,10 +47,10 @@ export default async (req) => {
       if (String(password).length < 8) return json({ error: "Le mot de passe doit faire au moins 8 caractères." }, 400);
       if (user) return json({ error: "Un compte existe déjà avec cet e-mail." }, 409);
       await store.setJSON("u:" + uid, { email: mail, pass: hashPw(String(password)), created: Date.now() });
-      return json({ token: sign(uid), email: mail });
+      return json({ token: sign(uid, keep), email: mail });
     }
     if (!user || !checkPw(String(password), user.pass)) return json({ error: "E-mail ou mot de passe incorrect." }, 401);
-    return json({ token: sign(uid), email: mail });
+    return json({ token: sign(uid, keep), email: mail });
   }
 
   if (route === "events") {
